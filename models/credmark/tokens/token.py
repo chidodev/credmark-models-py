@@ -1,4 +1,7 @@
 # pylint: disable=locally-disabled, unused-import
+from typing import (
+    Union
+)
 
 import credmark.model
 from credmark.model.errors import ModelDataError
@@ -77,25 +80,39 @@ class TokenPriceModel(credmark.model.Model):
         return Price(price=average_price)
 
 
+# TODO: to be merged to framework
+class PriceExt(DTO):
+    price: Union[float, None] = DTOField(None, description='Value of one Token')
+    src: Union[str, None] = DTOField(None, description='Source')
+
+    class Config:
+        schema_extra: dict = {
+            'examples': [{'price': 4.2, 'src': 'uniswap-v3'}]
+        }
+
+
 @credmark.model.describe(slug='token.price-ext',
                          version='1.0',
                          display_name='Token Price',
                          description='The Current Credmark Supported Price Algorithm',
                          developer='Credmark',
                          input=Token,
-                         output=Price)
+                         output=PriceExt)
 class TokenPriceModelExt(credmark.model.Model):
-    def run(self, input: Token) -> Price:
-        uniswap_v2 = Price(**self.context.models.uniswap_v2.get_average_price(input))
+    def run(self, input: Token) -> PriceExt:
+        uniswap_v2 = PriceExt(
+            **self.context.models.uniswap_v2.get_average_price(input), src='uniswap_v2')
         if uniswap_v2.price is not None:
             return uniswap_v2
-        uniswap_v3 = Price(**self.context.models.uniswap_v3.get_average_price(input))
+        uniswap_v3 = PriceExt(
+            **self.context.models.uniswap_v3.get_average_price(input), src='uniswap_v3')
         if uniswap_v3.price is not None:
             return uniswap_v3
-        sushiswap = Price(**self.context.models.sushiswap.get_average_price(input))
+        sushiswap = PriceExt(
+            **self.context.models.sushiswap.get_average_price(input), src='sushiswap')
         if sushiswap.price is not None:
             return sushiswap
-        return Price(price=None)
+        return PriceExt(price=None, src=None)
 
 
 @credmark.model.describe(slug='token.holders',
