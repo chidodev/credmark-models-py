@@ -107,9 +107,9 @@ class CurveFinancePoolInfo(credmark.model.Model):
             a = 0
 
         try:
-            input.contract_name = input.functions.name().call()
+            input._meta.contract_name = input.functions.name().call()
         except Exception as _err:
-            input.contract_name = "swappool"
+            input._meta.contract_name = "swappool"
 
         return CurveFiPoolInfo(**(input.dict()),
                                virtualPrice=virtual_price,

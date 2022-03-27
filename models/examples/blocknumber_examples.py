@@ -46,19 +46,14 @@ class BlockNumberTransformExample(credmark.model.Model):
                 'an exception was NOT caught, and the example has FAILED')
         except BlockNumberOutOfRangeError as _e:
             self.logger.info(_e)
-<<<<<<< HEAD
             self.logger.info("Attempting to create a BlockNumber object higher than the current "
                              "context's block_number raises BlockNumberOutOfRangeError")
-=======
-            self.logger.info(
-                "Attempting to create a BlockNumber object higher than the current context's block_number raises BlockNumberOutOfRangeError")
->>>>>>> 42271ec (example cleanup)
 
         try:
             BlockNumber(-1)
             raise ModelRunError(
-                message="BlockNumbers cannot be negative, an exception was NOT caught, "
-                "and the example has FAILED")
+                message=("BlockNumbers cannot be negative, an exception was NOT caught, "
+                         "and the example has FAILED"))
         except BlockNumberOutOfRangeError as _e:
             self.logger.info(_e)
             self.logger.info(

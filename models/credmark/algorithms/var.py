@@ -8,6 +8,11 @@ import numpy as np
 import pandas as pd
 
 import credmark.model
+
+from credmark.types import (
+    Token,
+)
+
 from credmark.model import ModelRunError
 
 from models.credmark.algorithms.risk import (
@@ -22,6 +27,7 @@ from models.credmark.algorithms.dto import (
 from models.credmark.algorithms.base import (
     ValueAtRiskBase
 )
+from models.tmp_abi_lookup import ERC_20_ABI
 
 
 @credmark.model.describe(slug='finance.var',
@@ -58,29 +64,31 @@ class ValueAtRisk(ValueAtRiskBase):
         dict_asOf = self.set_window(input)
         asOfs = dict_asOf['asOfs']
         block_max_asOf = dict_asOf['block_max_asOf']
+        timestamp_max_asOf = dict_asOf['timestamp_max_asOf']
         window_from_max_asOf = dict_asOf['window_from_max_asOf']
 
         df_hist = pd.DataFrame()
         key_cols = []
 
         for pos in input.portfolio.positions:
+            pos.asset = Token(address=pos.asset.address, abi=ERC_20_ABI)
             if not pos.asset.address:
                 raise ModelRunError(f'Input position is invalid, {input}')
 
-            breakpoint()
-            key_col = f'{pos.asset.address}.{pos.asset.symbol}'
+            # breakpoint()
+            key_col = f'{pos.asset.address}'
             if key_col in df_hist:
                 continue
 
-            self.logger.info(f'Start loading {pos.asset.symbol}')
+            self.logger.info(f'Start loading {pos.asset.address}')
             historical = (self.context.historical
                           .run_model_historical('token.price-ext',  # 'uniswap-v3.get-average-price',  # 'token.price',
                                                 window=window_from_max_asOf,
                                                 interval=minimal_interval,
                                                 model_input=pos.asset,
-                                                block_number=block_max_asOf)
+                                                end_timestamp=timestamp_max_asOf)
                           .dict())
-            self.logger.info(f'Finished loading {pos.asset.symbol}')
+            self.logger.info(f'Finished loading {pos.asset.address}')
 
             for p in historical['series']:
                 p['price'] = p['output']['price']
@@ -147,7 +155,7 @@ class ValueAtRisk(ValueAtRiskBase):
                 var[asOf_str][ivl_str] = {}
                 df_value = pd.DataFrame()
                 for pos in input.portfolio.positions:
-                    key_col = f'{pos.asset.address}.{pos.asset.symbol}'
+                    key_col = f'{pos.asset.address}'
                     ret = df_ret[key_col].to_numpy()
                     current_value = pos.amount * dict_current[key_col]
                     value_changes = ret * current_value
@@ -172,6 +180,7 @@ class ValueAtRisk(ValueAtRiskBase):
         df_res = (pd.DataFrame(res_arr, columns=['interval', 'confidence', 'asOf', 'var'])
                   .sort_values(by=['interval', 'confidence', 'asOf', 'var'],
                                ascending=[True, True, False, True]))
+        df_res.loc[:, 'interval'] = df_res.interval.apply(self.context.historical.parse_timerangestr)
         df_res_p = (df_res.pivot(index=['asOf'],
                                  columns=['confidence', 'interval'],
                                  values='var')
