@@ -30,6 +30,8 @@ from credmark.dto import (
 )
 from typing import List, Union
 
+from models.tmp_abi_lookup import ERC_20_ABI
+
 
 @credmark.model.describe(
     slug="token.info",
@@ -196,34 +198,38 @@ class CategorizedSupplyResponse(CategorizedSupplyRequest):
                          output=CategorizedSupplyResponse)
 class TokenCirculatingSupply(credmark.model.Model):
     def run(self, input: CategorizedSupplyRequest) -> CategorizedSupplyResponse:
-        if input.token.price_usd is None:
-            raise ModelDataError('Input token price is None')
+        # FIXME: remove abi
+        input.token = Token(address=input.token.address, abi=ERC_20_ABI)
         response = CategorizedSupplyResponse(**input.dict())
-        if response.token.price_usd is None:
-            raise ModelDataError('Response token price is None')
+        # FIXME: remove abi
+        response.token = Token(address=response.token.address, abi=ERC_20_ABI)
 
-        total_supply_scaled = input.token.total_supply().scaled
-        token_price: Union[Price, None] = self.context.models.token.price(input.token)
+        total_supply_scaled = input.token.scaled(input.token.total_supply)
+        token_price: Union[Price, None] = Price(**self.context.models.token.price(input.token))
 
-        for c in response.categories:
-            for account in c.accounts:
-                c.amountScaled += response.token.scaled(
-                    response.token.functions.balanceOf(account.address))
-            if token_price is not None and token_price.price is not None:
-                c.valueUsd = c.amountScaled * token_price.price
-        response.categories.append(CategorizedSupplyResponse.CategorizedSupplyCategory(
-            accounts=Accounts(accounts=[]),
-            categoryName='uncategorized',
-            categoryType='uncategorized',
-            circulating=True,
-            amountScaled=total_supply_scaled -
-            sum([c.amountScaled for c in response.categories])
-        ))
+        if token_price.price is not None:
+            for c in response.categories:
+                for account in c.accounts:
+                    bal = response.token.functions.balanceOf(account.address).call()
+                    c.amountScaled += response.token.scaled(bal)
+                if c.amountScaled is not None:
+                    c.valueUsd = c.amountScaled * token_price.price
 
-        all_circulating = [c.amountScaled for c in response.categories if c.circulating]
-        if len(all_circulating) > 0:
-            response.circulatingSupplyScaled = sum(all_circulating)
+            response.categories.append(CategorizedSupplyResponse.CategorizedSupplyCategory(
+                accounts=Accounts(accounts=[]),
+                categoryName='uncategorized',
+                categoryType='uncategorized',
+                circulating=True,
+                amountScaled=total_supply_scaled -
+                sum([c.amountScaled for c in response.categories])
+            ))
+
+            all_circulating = [c.amountScaled for c in response.categories if c.circulating]
+            if len(all_circulating) > 0:
+                response.circulatingSupplyScaled = sum(all_circulating)
+            else:
+                response.circulatingSupplyScaled = 0
+            response.circulatingSupplyUsd = response.circulatingSupplyScaled * token_price.price
+            return response
         else:
-            response.circulatingSupplyScaled = 0
-        response.circulatingSupplyUsd = response.circulatingSupplyScaled * input.token.price_usd
-        return response
+            raise ModelDataError(f'Token price for {input.token} is unknown')
